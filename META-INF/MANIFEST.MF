@@ -1,0 +1,16 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: ShareClient
+Bundle-SymbolicName: ShareClient;singleton:=true
+Bundle-Version: 1.0.0
+Import-Package: javax.inject;version="[1.0.0,2.0.0)"
+Bundle-Activator: me.mrletsplay.shareclient.Activator
+Require-Bundle: org.eclipse.ui,
+ org.eclipse.core.runtime,
+ org.eclipse.ui.editors;bundle-version="3.17.0",
+ org.eclipse.text,
+ Java-WebSocket;bundle-version="1.5.4",
+ wrapped.me.mrletsplay.ShareClient-Core;bundle-version="1.0.0"
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Automatic-Module-Name: ShareClient
+Bundle-ActivationPolicy: lazy
