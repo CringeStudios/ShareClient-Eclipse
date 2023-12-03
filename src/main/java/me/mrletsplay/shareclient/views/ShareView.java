@@ -5,6 +5,7 @@ import javax.inject.Inject;
 
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.jface.preference.PreferenceDialog;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.ITableLabelProvider;
@@ -17,6 +18,7 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.IActionBars;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.IWorkbench;
+import org.eclipse.ui.dialogs.PreferencesUtil;
 import org.eclipse.ui.part.ViewPart;
 
 
@@ -82,7 +84,10 @@ public class ShareView extends ViewPart {
 
 			@Override
 			public void run() {
-				showMessage("Settings");
+				PreferenceDialog dialog = PreferencesUtil.createPreferenceDialogOn(
+					null, "ShareClient.preferences",
+					null, null);
+				dialog.open();
 			}
 
 		};

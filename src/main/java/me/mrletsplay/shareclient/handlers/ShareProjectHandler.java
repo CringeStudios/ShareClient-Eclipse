@@ -1,37 +1,52 @@
 package me.mrletsplay.shareclient.handlers;
 
-import java.io.IOException;
-import java.net.URI;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
-import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.Adapters;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.DocumentEvent;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IDocumentListener;
+import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 import org.eclipse.ui.texteditor.ITextEditor;
 
+import me.mrletsplay.shareclient.Activator;
 import me.mrletsplay.shareclientcore.connection.RemoteConnection;
-import me.mrletsplay.shareclientcore.connection.WebSocketConnection;
 import me.mrletsplay.shareclientcore.document.DocumentListener;
 import me.mrletsplay.shareclientcore.document.SharedDocument;
 
-public class SampleHandler extends AbstractHandler {
+public class ShareProjectHandler extends AbstractHandler {
 
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
 		IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
-		MessageDialog.openInformation(
-				window.getShell(),
-				"ShareClient",
-				"Hello, Eclipse world");
+
+		IStructuredSelection selection = HandlerUtil.getCurrentStructuredSelection(event);
+		if(selection.isEmpty()) return null;
+
+		IResource res = Adapters.adapt(selection.getFirstElement(), IResource.class, false);
+		if(res == null) return null;
+
+		IProject project = res.getProject();
+		if(project == null) return null;
+
+		IPath path = project.getLocation();
+		if(path == null) return null;
+
+		RemoteConnection con = Activator.getDefault().getOrOpenConnection();
+		if(con == null) return null;
+
+		// TODO: share entire project
 
 		IEditorPart editor = window.getActivePage().getActiveEditor();
 		if(!(editor instanceof ITextEditor)) return null;
@@ -39,13 +54,6 @@ public class SampleHandler extends AbstractHandler {
 		ITextEditor textEditor = (ITextEditor) editor;
 
 		IDocument eclipseDocument = textEditor.getDocumentProvider().getDocument(textEditor.getEditorInput());
-
-		RemoteConnection con = new WebSocketConnection(URI.create("ws://localhost:5473"));
-		try {
-			con.connect();
-		} catch (IOException | InterruptedException e) {
-			e.printStackTrace();
-		}
 
 		AtomicBoolean ignoreChanges = new AtomicBoolean(false);
 		SharedDocument doc = new SharedDocument(con);
