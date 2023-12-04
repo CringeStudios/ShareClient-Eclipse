@@ -1,9 +1,14 @@
 package me.mrletsplay.shareclient.views;
 
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 import javax.inject.Inject;
 
 import org.eclipse.jface.action.Action;
+import org.eclipse.jface.dialogs.InputDialog;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.PreferenceDialog;
 import org.eclipse.jface.resource.ImageDescriptor;
@@ -15,30 +20,18 @@ import org.eclipse.jface.viewers.TableViewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IActionBars;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.dialogs.PreferencesUtil;
 import org.eclipse.ui.part.ViewPart;
 
-
-/**
- * This sample class demonstrates how to plug-in a new
- * workbench view. The view shows data obtained from the
- * model. The sample creates a dummy model on the fly,
- * but a real implementation would connect to the model
- * available either in this or another plug-in (e.g. the workspace).
- * The view is connected to the model using a content provider.
- * <p>
- * The view uses a label provider to define how model
- * objects should be presented in the view. Each
- * view can present the same model objects using
- * different labels and icons, if needed. Alternatively,
- * a single label provider can be shared between views
- * in order to ensure that objects of the same type are
- * presented in the same way everywhere.
- * <p>
- */
+import me.mrletsplay.shareclient.Activator;
+import me.mrletsplay.shareclientcore.connection.ConnectionException;
+import me.mrletsplay.shareclientcore.connection.RemoteConnection;
+import me.mrletsplay.shareclientcore.connection.message.PeerJoinMessage;
+import me.mrletsplay.shareclientcore.connection.message.RequestFullSyncMessage;
 
 public class ShareView extends ViewPart {
 
@@ -50,6 +43,8 @@ public class ShareView extends ViewPart {
 	@Inject IWorkbench workbench;
 
 	private TableViewer viewer;
+
+	private List<String> peerNames = new ArrayList<>();
 
 	class ViewLabelProvider extends LabelProvider implements ITableLabelProvider {
 		@Override
@@ -71,7 +66,7 @@ public class ShareView extends ViewPart {
 		viewer = new TableViewer(parent, SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
 
 		viewer.setContentProvider(ArrayContentProvider.getInstance());
-		viewer.setInput(new String[] { "One", "Two", "Three" });
+		viewer.setInput(new String[] {});
 		viewer.setLabelProvider(new ViewLabelProvider());
 
 		// Create the help context id for the viewer's control
@@ -80,7 +75,42 @@ public class ShareView extends ViewPart {
 
 		IActionBars bars = getViewSite().getActionBars();
 
-		Action showSettings = new Action() {
+		Action joinSession = new Action("Join session", ImageDescriptor.createFromFile(ShareView.class, "/icons/door.png")) {
+
+			@Override
+			public void run() {
+				InputDialog input = new InputDialog(viewer.getControl().getShell(), "Join session", "Enter session id", "EEE", null);
+				input.setBlockOnOpen(true);
+				if(input.open() != InputDialog.OK) return;
+
+				RemoteConnection connection = Activator.getDefault().getActiveConnection();
+				if(connection != null) connection.disconnect();
+
+				connection = Activator.getDefault().openConnection(input.getValue());
+				if(connection == null) return;
+
+				connection.addListener(m -> {
+					System.out.println("Got: " + m);
+					if(m instanceof PeerJoinMessage join) {
+						peerNames.add(join.peerName());
+						Display.getDefault().asyncExec(() -> viewer.setInput(peerNames.toArray(String[]::new)));
+					}
+
+					// TODO: handle FULL_SYNC
+				});
+
+				try {
+					connection.send(new RequestFullSyncMessage(connection.getSiteID(), null));
+				} catch (ConnectionException e) {
+					connection.disconnect();
+					showMessage("Failed to send: " + e);
+				}
+			}
+
+		};
+		bars.getToolBarManager().add(joinSession);
+
+		Action showSettings = new Action("Settings", ImageDescriptor.createFromFile(ShareView.class, "/icons/cog.png")) {
 
 			@Override
 			public void run() {
@@ -91,20 +121,17 @@ public class ShareView extends ViewPart {
 			}
 
 		};
+		bars.getToolBarManager().add(showSettings);
 
 		viewer.addDoubleClickListener(event -> {
-			showMessage(String.valueOf(((StructuredSelection) event.getSelection()).toArray()[0]));
+			showMessage(Arrays.toString(((StructuredSelection) event.getSelection()).toArray()));
 		});
-
-		showSettings.setImageDescriptor(ImageDescriptor.createFromFile(ShareView.class, "/icons/cog.png"));
-
-		bars.getToolBarManager().add(showSettings);
 	}
 
 	private void showMessage(String message) {
 		MessageDialog.openInformation(
 			viewer.getControl().getShell(),
-			"Sample View",
+			"Share Client",
 			message);
 	}
 

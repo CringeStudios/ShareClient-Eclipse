@@ -33,37 +33,14 @@
    <extension
          point="org.eclipse.ui.menus">
       <menuContribution
-            locationURI="menu:org.eclipse.ui.main.menu?after=additions">
-         <menu
-               id="ShareClient.menus.sampleMenu"
-               label="Sample Menu"
-               mnemonic="M">
-            <command
-                  commandId="ShareClient.commands.shareProjectCommand"
-                  id="ShareClient.menus.sampleCommand"
-                  mnemonic="S">
-            </command>
-         </menu>
-      </menuContribution>
-      <menuContribution
-            locationURI="toolbar:org.eclipse.ui.main.toolbar?after=additions">
-         <toolbar
-               id="ShareClient.toolbars.sampleToolbar">
-            <command
-                  id="ShareClient.toolbars.sampleCommand"
-                  commandId="ShareClient.commands.shareProjectCommand"
-                  icon="icons/sample.png"
-                  tooltip="Say hello world">
-            </command>
-         </toolbar>
-      </menuContribution>
-      <menuContribution
             allPopups="false"
             locationURI="popup:org.eclipse.ui.popup.any?after=additions">
          <menu
+               icon="icons/icon.png"
                label="Share Client">
             <command
                   commandId="ShareClient.commands.shareProjectCommand"
+                  icon="icons/share.png"
                   label="Share project"
                   style="push">
                <visibleWhen
@@ -88,7 +65,7 @@
       <view
             category="me.mrletsplay.shareclient"
             class="me.mrletsplay.shareclient.views.ShareView"
-            icon="icons/sample.png"
+            icon="icons/icon.png"
             id="shareclient.views.SampleView"
             inject="true"
             name="Share Client">

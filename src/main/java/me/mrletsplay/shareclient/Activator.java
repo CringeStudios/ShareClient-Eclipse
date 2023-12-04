@@ -56,25 +56,31 @@ public class Activator extends AbstractUIPlugin {
 		return plugin;
 	}
 
+	public RemoteConnection openConnection(String sessionID) {
+		String serverURI = getPreferenceStore().getString(ShareClientPreferences.SERVER_URI);
+		if(serverURI == null) return null;
+
+		String username = getPreferenceStore().getString(ShareClientPreferences.USERNAME);
+		if(username == null || username.isBlank()) username = "user" + new Random().nextInt(1000);
+
+		activeConnection = new WebSocketConnection(URI.create(serverURI), username);
+		try {
+			activeConnection.connect(sessionID); // TODO: connect to existing session
+		} catch (ConnectionException e) {
+			MessageDialog.openInformation(
+				null,
+				"Share Client",
+				"Failed to connect to server: " + e);
+			activeConnection = null;
+			return null;
+		}
+
+		return activeConnection;
+	}
+
 	public RemoteConnection getOrOpenConnection() {
 		if(activeConnection == null) {
-			String serverURI = getPreferenceStore().getString(ShareClientPreferences.SERVER_URI);
-			if(serverURI == null) return null;
-
-			String username = getPreferenceStore().getString(ShareClientPreferences.USERNAME);
-			if(username == null) username = "user" + new Random().nextInt(1000);
-
-			activeConnection = new WebSocketConnection(URI.create(serverURI), username);
-			try {
-				activeConnection.connect(UUID.randomUUID().toString()); // TODO: connect to existing session
-			} catch (ConnectionException e) {
-				MessageDialog.openInformation(
-					null,
-					"Share Client",
-					"Failed to connect to server: " + e);
-				activeConnection = null;
-				return null;
-			}
+			openConnection(UUID.randomUUID().toString());
 		}
 
 		return activeConnection;
