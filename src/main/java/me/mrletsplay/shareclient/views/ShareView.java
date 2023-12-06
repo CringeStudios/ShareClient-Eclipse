@@ -1,13 +1,19 @@
 package me.mrletsplay.shareclient.views;
 
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 import javax.inject.Inject;
 
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.jface.action.Action;
+import org.eclipse.jface.action.IToolBarManager;
 import org.eclipse.jface.dialogs.InputDialog;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.PreferenceDialog;
@@ -22,14 +28,15 @@ import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IActionBars;
-import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.dialogs.PreferencesUtil;
 import org.eclipse.ui.part.ViewPart;
 
 import me.mrletsplay.shareclient.Activator;
+import me.mrletsplay.shareclient.util.ProjectRelativePath;
 import me.mrletsplay.shareclientcore.connection.ConnectionException;
 import me.mrletsplay.shareclientcore.connection.RemoteConnection;
+import me.mrletsplay.shareclientcore.connection.message.FullSyncMessage;
 import me.mrletsplay.shareclientcore.connection.message.PeerJoinMessage;
 import me.mrletsplay.shareclientcore.connection.message.RequestFullSyncMessage;
 
@@ -57,7 +64,7 @@ public class ShareView extends ViewPart {
 		}
 		@Override
 		public Image getImage(Object obj) {
-			return workbench.getSharedImages().getImage(ISharedImages.IMG_OBJ_ELEMENT);
+			return ImageDescriptor.createFromFile(ShareView.class, "/icons/account.png").createImage();
 		}
 	}
 
@@ -73,12 +80,25 @@ public class ShareView extends ViewPart {
 		workbench.getHelpSystem().setHelp(viewer.getControl(), "ShareClient.viewer");
 		getSite().setSelectionProvider(viewer);
 
+		viewer.addDoubleClickListener(event -> {
+			showMessage(Arrays.toString(((StructuredSelection) event.getSelection()).toArray()));
+		});
+
+		updateActionBars();
+	}
+
+	private void updateActionBars() {
 		IActionBars bars = getViewSite().getActionBars();
+		IToolBarManager toolbars = bars.getToolBarManager();
+
+		toolbars.removeAll();
 
 		Action joinSession = new Action("Join session", ImageDescriptor.createFromFile(ShareView.class, "/icons/door.png")) {
 
 			@Override
 			public void run() {
+				showMessage(Arrays.stream(ResourcesPlugin.getWorkspace().getRoot().getProjects()).map(p -> p.getName() + ": " + p.getLocation().toString()).toList().toString());
+
 				InputDialog input = new InputDialog(viewer.getControl().getShell(), "Join session", "Enter session id", "EEE", null);
 				input.setBlockOnOpen(true);
 				if(input.open() != InputDialog.OK) return;
@@ -96,19 +116,56 @@ public class ShareView extends ViewPart {
 						Display.getDefault().asyncExec(() -> viewer.setInput(peerNames.toArray(String[]::new)));
 					}
 
-					// TODO: handle FULL_SYNC
+					if(m instanceof FullSyncMessage sync) {
+						// TODO: handle FULL_SYNC
+						ProjectRelativePath path;
+						try {
+							path = ProjectRelativePath.of(sync.documentPath());
+						}catch(IllegalArgumentException e) {
+							return;
+						}
+
+						IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(path.projectName());
+						if(project == null) return; // TODO: create project
+
+						Path filePath = project.getLocation().toPath().resolve(path.relativePath());
+						try {
+							if(!Files.exists(filePath)) {
+								Files.createDirectories(filePath.getParent());
+								Files.createFile(filePath);
+							}
+
+							Files.write(filePath, sync.content());
+						} catch (IOException e) {
+							// TODO: handle exception
+						}
+					}
 				});
 
 				try {
 					connection.send(new RequestFullSyncMessage(connection.getSiteID(), null));
+					updateActionBars();
 				} catch (ConnectionException e) {
-					connection.disconnect();
+					Activator.getDefault().closeConnection();
 					showMessage("Failed to send: " + e);
 				}
 			}
 
 		};
-		bars.getToolBarManager().add(joinSession);
+		if(Activator.getDefault().getActiveConnection() == null) toolbars.add(joinSession);
+
+		Action leaveSession = new Action("Leave session", ImageDescriptor.createFromFile(ShareView.class, "/icons/stop.png")) {
+
+			@Override
+			public void run() {
+				Activator.getDefault().closeConnection();
+				peerNames.clear();
+				viewer.setInput(peerNames.toArray(String[]::new));
+				updateActionBars();
+			}
+
+		};
+		if(Activator.getDefault().getActiveConnection() != null) toolbars.add(leaveSession);
 
 		Action showSettings = new Action("Settings", ImageDescriptor.createFromFile(ShareView.class, "/icons/cog.png")) {
 
@@ -121,11 +178,9 @@ public class ShareView extends ViewPart {
 			}
 
 		};
-		bars.getToolBarManager().add(showSettings);
+		toolbars.add(showSettings);
 
-		viewer.addDoubleClickListener(event -> {
-			showMessage(Arrays.toString(((StructuredSelection) event.getSelection()).toArray()));
-		});
+		bars.updateActionBars();
 	}
 
 	private void showMessage(String message) {

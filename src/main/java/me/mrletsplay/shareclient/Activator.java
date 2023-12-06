@@ -86,6 +86,12 @@ public class Activator extends AbstractUIPlugin {
 		return activeConnection;
 	}
 
+	public void closeConnection() {
+		if(activeConnection == null) return;
+		activeConnection.disconnect();
+		activeConnection = null;
+	}
+
 	public RemoteConnection getActiveConnection() {
 		return activeConnection;
 	}
