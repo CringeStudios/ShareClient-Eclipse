@@ -11,7 +11,7 @@ import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 
-import me.mrletsplay.shareclient.Activator;
+import me.mrletsplay.shareclient.ShareClient;
 import me.mrletsplay.shareclientcore.connection.RemoteConnection;
 
 public class ShareProjectHandler extends AbstractHandler {
@@ -32,7 +32,7 @@ public class ShareProjectHandler extends AbstractHandler {
 		IPath path = project.getLocation();
 		if(path == null) return null;
 
-		RemoteConnection con = Activator.getDefault().getOrOpenConnection();
+		RemoteConnection con = ShareClient.getDefault().getOrOpenConnection();
 		if(con == null) return null;
 
 		// TODO: handle case when adding project to existing session

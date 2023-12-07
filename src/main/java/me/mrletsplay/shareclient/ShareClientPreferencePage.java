@@ -10,7 +10,7 @@ public class ShareClientPreferencePage extends FieldEditorPreferencePage impleme
 
 	public ShareClientPreferencePage() {
 //		super(GRID);
-		setPreferenceStore(Activator.getDefault().getPreferenceStore());
+		setPreferenceStore(ShareClient.getDefault().getPreferenceStore());
 		setDescription("Share Client Preferences");
 	}
 

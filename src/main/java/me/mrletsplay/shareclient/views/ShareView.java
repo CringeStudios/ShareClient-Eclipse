@@ -1,16 +1,10 @@
 package me.mrletsplay.shareclient.views;
 
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 import javax.inject.Inject;
 
-import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IToolBarManager;
@@ -26,18 +20,16 @@ import org.eclipse.jface.viewers.TableViewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IActionBars;
+import org.eclipse.ui.IViewSite;
 import org.eclipse.ui.IWorkbench;
+import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.dialogs.PreferencesUtil;
 import org.eclipse.ui.part.ViewPart;
 
-import me.mrletsplay.shareclient.Activator;
-import me.mrletsplay.shareclient.util.ProjectRelativePath;
+import me.mrletsplay.shareclient.ShareClient;
 import me.mrletsplay.shareclientcore.connection.ConnectionException;
 import me.mrletsplay.shareclientcore.connection.RemoteConnection;
-import me.mrletsplay.shareclientcore.connection.message.FullSyncMessage;
-import me.mrletsplay.shareclientcore.connection.message.PeerJoinMessage;
 import me.mrletsplay.shareclientcore.connection.message.RequestFullSyncMessage;
 
 public class ShareView extends ViewPart {
@@ -50,8 +42,6 @@ public class ShareView extends ViewPart {
 	@Inject IWorkbench workbench;
 
 	private TableViewer viewer;
-
-	private List<String> peerNames = new ArrayList<>();
 
 	class ViewLabelProvider extends LabelProvider implements ITableLabelProvider {
 		@Override
@@ -69,11 +59,24 @@ public class ShareView extends ViewPart {
 	}
 
 	@Override
+	public void init(IViewSite site) throws PartInitException {
+		super.init(site);
+		System.out.println(ShareClient.getDefault());
+		ShareClient.getDefault().setView(this);
+	}
+
+	@Override
+	public void dispose() {
+		super.dispose();
+		ShareClient.getDefault().setView(null);
+	}
+
+	@Override
 	public void createPartControl(Composite parent) {
 		viewer = new TableViewer(parent, SWT.MULTI | SWT.H_SCROLL | SWT.V_SCROLL);
 
 		viewer.setContentProvider(ArrayContentProvider.getInstance());
-		viewer.setInput(new String[] {});
+		viewer.setInput(new String[0]);
 		viewer.setLabelProvider(new ViewLabelProvider());
 
 		// Create the help context id for the viewer's control
@@ -103,69 +106,34 @@ public class ShareView extends ViewPart {
 				input.setBlockOnOpen(true);
 				if(input.open() != InputDialog.OK) return;
 
-				RemoteConnection connection = Activator.getDefault().getActiveConnection();
+				RemoteConnection connection = ShareClient.getDefault().getActiveConnection();
 				if(connection != null) connection.disconnect();
 
-				connection = Activator.getDefault().openConnection(input.getValue());
+				connection = ShareClient.getDefault().openConnection(input.getValue());
 				if(connection == null) return;
-
-				connection.addListener(m -> {
-					System.out.println("Got: " + m);
-					if(m instanceof PeerJoinMessage join) {
-						peerNames.add(join.peerName());
-						Display.getDefault().asyncExec(() -> viewer.setInput(peerNames.toArray(String[]::new)));
-					}
-
-					if(m instanceof FullSyncMessage sync) {
-						// TODO: handle FULL_SYNC
-						ProjectRelativePath path;
-						try {
-							path = ProjectRelativePath.of(sync.documentPath());
-						}catch(IllegalArgumentException e) {
-							return;
-						}
-
-						IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(path.projectName());
-						if(project == null) return; // TODO: create project
-
-						Path filePath = project.getLocation().toPath().resolve(path.relativePath());
-						try {
-							if(!Files.exists(filePath)) {
-								Files.createDirectories(filePath.getParent());
-								Files.createFile(filePath);
-							}
-
-							Files.write(filePath, sync.content());
-						} catch (IOException e) {
-							// TODO: handle exception
-						}
-					}
-				});
 
 				try {
 					connection.send(new RequestFullSyncMessage(connection.getSiteID(), null));
 					updateActionBars();
 				} catch (ConnectionException e) {
-					Activator.getDefault().closeConnection();
+					ShareClient.getDefault().closeConnection();
 					showMessage("Failed to send: " + e);
 				}
 			}
 
 		};
-		if(Activator.getDefault().getActiveConnection() == null) toolbars.add(joinSession);
+		if(ShareClient.getDefault().getActiveConnection() == null) toolbars.add(joinSession);
 
 		Action leaveSession = new Action("Leave session", ImageDescriptor.createFromFile(ShareView.class, "/icons/stop.png")) {
 
 			@Override
 			public void run() {
-				Activator.getDefault().closeConnection();
-				peerNames.clear();
-				viewer.setInput(peerNames.toArray(String[]::new));
+				ShareClient.getDefault().closeConnection();
 				updateActionBars();
 			}
 
 		};
-		if(Activator.getDefault().getActiveConnection() != null) toolbars.add(leaveSession);
+		if(ShareClient.getDefault().getActiveConnection() != null) toolbars.add(leaveSession);
 
 		Action showSettings = new Action("Settings", ImageDescriptor.createFromFile(ShareView.class, "/icons/cog.png")) {
 
@@ -188,6 +156,10 @@ public class ShareView extends ViewPart {
 			viewer.getControl().getShell(),
 			"Share Client",
 			message);
+	}
+
+	public TableViewer getViewer() {
+		return viewer;
 	}
 
 	@Override

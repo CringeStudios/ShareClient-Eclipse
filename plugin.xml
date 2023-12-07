@@ -6,11 +6,11 @@
          point="org.eclipse.ui.commands">
       <category
             id="ShareClient.commands.category"
-            name="Sample Category">
+            name="Share Client">
       </category>
       <command
             categoryId="ShareClient.commands.category"
-            name="Sample Command"
+            name="Share Project"
             id="ShareClient.commands.shareProjectCommand">
       </command>
    </extension>
@@ -60,13 +60,13 @@
          point="org.eclipse.ui.views">
       <category
             id="me.mrletsplay.shareclient"
-            name="ShareClient">
+            name="Share Client">
       </category>
       <view
             category="me.mrletsplay.shareclient"
             class="me.mrletsplay.shareclient.views.ShareView"
             icon="icons/icon.png"
-            id="shareclient.views.SampleView"
+            id="me.mrletsplay.shareclient.views.ShareView"
             inject="true"
             name="Share Client">
       </view>
