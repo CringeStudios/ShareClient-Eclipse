@@ -10,8 +10,9 @@ Require-Bundle: org.eclipse.ui,
  org.eclipse.ui.editors;bundle-version="3.17.0",
  org.eclipse.text,
  Java-WebSocket;bundle-version="1.5.4",
- wrapped.me.mrletsplay.ShareClient-Core;bundle-version="1.0.0",
- org.eclipse.core.resources;bundle-version="3.19.100"
+ org.eclipse.core.resources;bundle-version="3.19.100",
+ wrapped.me.mrletsplay.ShareLib;bundle-version="1.0.0",
+ org.eclipse.ui.ide;bundle-version="3.22.0"
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Automatic-Module-Name: ShareClient
 Bundle-ActivationPolicy: lazy

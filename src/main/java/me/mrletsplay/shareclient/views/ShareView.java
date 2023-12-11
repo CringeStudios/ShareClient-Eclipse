@@ -18,8 +18,12 @@ import org.eclipse.jface.viewers.LabelProvider;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.jface.viewers.TableViewer;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.TextTransfer;
+import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IActionBars;
 import org.eclipse.ui.IViewSite;
 import org.eclipse.ui.IWorkbench;
@@ -28,6 +32,7 @@ import org.eclipse.ui.dialogs.PreferencesUtil;
 import org.eclipse.ui.part.ViewPart;
 
 import me.mrletsplay.shareclient.ShareClient;
+import me.mrletsplay.shareclient.util.ShareSession;
 import me.mrletsplay.shareclientcore.connection.ConnectionException;
 import me.mrletsplay.shareclientcore.connection.RemoteConnection;
 import me.mrletsplay.shareclientcore.connection.message.RequestFullSyncMessage;
@@ -90,7 +95,7 @@ public class ShareView extends ViewPart {
 		updateActionBars();
 	}
 
-	private void updateActionBars() {
+	public void updateActionBars() {
 		IActionBars bars = getViewSite().getActionBars();
 		IToolBarManager toolbars = bars.getToolBarManager();
 
@@ -106,11 +111,13 @@ public class ShareView extends ViewPart {
 				input.setBlockOnOpen(true);
 				if(input.open() != InputDialog.OK) return;
 
-				RemoteConnection connection = ShareClient.getDefault().getActiveConnection();
-				if(connection != null) connection.disconnect();
+				ShareSession session = ShareClient.getDefault().getActiveSession();
+				if(session != null) session.stop();
 
-				connection = ShareClient.getDefault().openConnection(input.getValue());
-				if(connection == null) return;
+				session = ShareClient.getDefault().startSession(input.getValue());
+				if(session == null) return;
+
+				RemoteConnection connection = session.getConnection();
 
 				try {
 					connection.send(new RequestFullSyncMessage(connection.getSiteID(), null));
@@ -122,7 +129,17 @@ public class ShareView extends ViewPart {
 			}
 
 		};
-		if(ShareClient.getDefault().getActiveConnection() == null) toolbars.add(joinSession);
+
+		Action copySessionID = new Action("Copy session ID", ImageDescriptor.createFromFile(ShareView.class, "/icons/content-copy.png")) {
+
+			@Override
+			public void run() {
+				Clipboard clipboard = new Clipboard(Display.getDefault());
+				clipboard.setContents(new String[] {ShareClient.getDefault().getActiveSession().getSessionID()}, new Transfer[] {TextTransfer.getInstance()});
+			}
+
+		};
+
 
 		Action leaveSession = new Action("Leave session", ImageDescriptor.createFromFile(ShareView.class, "/icons/stop.png")) {
 
@@ -133,7 +150,6 @@ public class ShareView extends ViewPart {
 			}
 
 		};
-		if(ShareClient.getDefault().getActiveConnection() != null) toolbars.add(leaveSession);
 
 		Action showSettings = new Action("Settings", ImageDescriptor.createFromFile(ShareView.class, "/icons/cog.png")) {
 
@@ -146,6 +162,14 @@ public class ShareView extends ViewPart {
 			}
 
 		};
+
+		if(ShareClient.getDefault().getActiveSession() == null) {
+			toolbars.add(joinSession);
+		}else {
+			toolbars.add(copySessionID);
+			toolbars.add(leaveSession);
+		}
+
 		toolbars.add(showSettings);
 
 		bars.updateActionBars();

@@ -12,7 +12,7 @@ import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 import me.mrletsplay.shareclient.ShareClient;
-import me.mrletsplay.shareclientcore.connection.RemoteConnection;
+import me.mrletsplay.shareclient.util.ShareSession;
 
 public class ShareProjectHandler extends AbstractHandler {
 
@@ -32,10 +32,12 @@ public class ShareProjectHandler extends AbstractHandler {
 		IPath path = project.getLocation();
 		if(path == null) return null;
 
-		RemoteConnection con = ShareClient.getDefault().getOrOpenConnection();
-		if(con == null) return null;
+		ShareSession session = ShareClient.getDefault().getOrStartSession();
+		if(session == null) return null;
 
-		// TODO: handle case when adding project to existing session
+		session.getSharedProjects().add(project);
+
+		// TODO: broadcast FULL_SYNC for newly added project
 
 //		IEditorPart editor = window.getActivePage().getActiveEditor();
 //		if(!(editor instanceof ITextEditor)) return null;
