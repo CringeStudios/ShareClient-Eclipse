@@ -5,7 +5,6 @@ import java.util.Arrays;
 
 import javax.inject.Inject;
 
-import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IToolBarManager;
 import org.eclipse.jface.dialogs.InputDialog;
@@ -105,8 +104,6 @@ public class ShareView extends ViewPart {
 
 			@Override
 			public void run() {
-				showMessage(Arrays.stream(ResourcesPlugin.getWorkspace().getRoot().getProjects()).map(p -> p.getName() + ": " + p.getLocation().toString()).toList().toString());
-
 				InputDialog input = new InputDialog(viewer.getControl().getShell(), "Join session", "Enter session id", "EEE", null);
 				input.setBlockOnOpen(true);
 				if(input.open() != InputDialog.OK) return;

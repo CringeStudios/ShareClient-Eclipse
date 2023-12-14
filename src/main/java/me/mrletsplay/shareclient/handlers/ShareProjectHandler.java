@@ -35,9 +35,7 @@ public class ShareProjectHandler extends AbstractHandler {
 		ShareSession session = ShareClient.getDefault().getOrStartSession();
 		if(session == null) return null;
 
-		session.getSharedProjects().add(project);
-
-		// TODO: broadcast FULL_SYNC for newly added project
+		ShareClient.getDefault().addSharedProject(project);
 
 //		IEditorPart editor = window.getActivePage().getActiveEditor();
 //		if(!(editor instanceof ITextEditor)) return null;

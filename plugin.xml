@@ -97,5 +97,11 @@
             name="Share Client">
       </page>
    </extension>
+   <extension
+         point="org.eclipse.ui.startup">
+      <startup
+            class="me.mrletsplay.shareclient.ShareClient">
+      </startup>
+   </extension>
 
 </plugin>

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -20,26 +21,38 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.ui.IStartup;
+import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
+import me.mrletsplay.shareclient.util.ChecksumUtil;
 import me.mrletsplay.shareclient.util.Peer;
 import me.mrletsplay.shareclient.util.ProjectRelativePath;
 import me.mrletsplay.shareclient.util.ShareSession;
+import me.mrletsplay.shareclient.util.listeners.ShareClientPageListener;
+import me.mrletsplay.shareclient.util.listeners.ShareClientPartListener;
+import me.mrletsplay.shareclient.util.listeners.ShareClientWindowListener;
 import me.mrletsplay.shareclient.views.ShareView;
+import me.mrletsplay.shareclientcore.connection.Change;
 import me.mrletsplay.shareclientcore.connection.ConnectionException;
 import me.mrletsplay.shareclientcore.connection.MessageListener;
 import me.mrletsplay.shareclientcore.connection.RemoteConnection;
 import me.mrletsplay.shareclientcore.connection.WebSocketConnection;
+import me.mrletsplay.shareclientcore.connection.message.AddressableMessage;
+import me.mrletsplay.shareclientcore.connection.message.ChangeMessage;
+import me.mrletsplay.shareclientcore.connection.message.ChecksumMessage;
 import me.mrletsplay.shareclientcore.connection.message.FullSyncMessage;
 import me.mrletsplay.shareclientcore.connection.message.Message;
 import me.mrletsplay.shareclientcore.connection.message.PeerJoinMessage;
+import me.mrletsplay.shareclientcore.connection.message.PeerLeaveMessage;
 import me.mrletsplay.shareclientcore.connection.message.RequestFullSyncMessage;
+import me.mrletsplay.shareclientcore.document.SharedDocument;
 
 /**
  * The activator class controls the plug-in life cycle
  */
-public class ShareClient extends AbstractUIPlugin implements MessageListener {
+public class ShareClient extends AbstractUIPlugin implements MessageListener, IStartup {
 
 	// The plug-in ID
 	public static final String PLUGIN_ID = "ShareClient"; //$NON-NLS-1$
@@ -47,11 +60,15 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener {
 	// The shared instance
 	private static ShareClient plugin;
 
+	private ShareClientPartListener partListener = new ShareClientPartListener();
+
 	private ShareView view;
 	private ShareSession activeSession;
 
-	public ShareClient() {
+	private Map<ProjectRelativePath, SharedDocument> sharedDocuments;
 
+	public ShareClient() {
+		this.sharedDocuments = new HashMap<>();
 	}
 
 	@Override
@@ -147,6 +164,11 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener {
 			updateView();
 		}
 
+		if(message instanceof PeerLeaveMessage leave) {
+			activeSession.getPeers().removeIf(p -> p.siteID() == leave.peerSiteID());
+			updateView();
+		}
+
 		if (message instanceof FullSyncMessage sync) {
 			// TODO: handle FULL_SYNC
 			ProjectRelativePath path;
@@ -181,6 +203,8 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener {
 					Files.createDirectories(filePath.getParent());
 					Files.createFile(filePath);
 				}
+
+				// TODO: update sharedDocuments
 
 				Files.write(filePath, sync.content());
 				project.refreshLocal(IResource.DEPTH_INFINITE, null);
@@ -227,18 +251,50 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener {
 
 			RemoteConnection connection = activeSession.getConnection();
 			for (var en : paths.entrySet()) {
-				if (!Files.isRegularFile(en.getValue()))
-					continue;
-				try {
-					byte[] bytes = Files.readAllBytes(en.getValue());
-					connection.send(new FullSyncMessage(req.siteID(), en.getKey().toString(), bytes));
-				} catch (IOException | ConnectionException e) {
-					e.printStackTrace();
-					MessageDialog.openError(null, "Share Client", "Failed to send file contents: " + e.toString());
-					return;
-				}
+				if(!sendFullSyncOrChecksum(connection, req.siteID(), en.getKey(), en.getValue(), false)) return;
 			}
 		}
+
+		if(message instanceof ChangeMessage change) {
+			Change c = change.change();
+			try {
+				ProjectRelativePath path = ProjectRelativePath.of(c.documentPath());
+			}catch(IllegalArgumentException e) {
+				return;
+			}
+
+			// TODO: insert change into document in sharedDocuments
+		}
+	}
+
+	public void addSharedProject(IProject project) {
+		activeSession.getSharedProjects().add(project);
+
+		RemoteConnection connection = activeSession.getConnection();
+		for(Map.Entry<ProjectRelativePath, Path> en : getProjectFiles(project).entrySet()) {
+			// TODO: add new document to sharedDocuments
+			if(!sendFullSyncOrChecksum(connection, AddressableMessage.BROADCAST_SITE_ID, en.getKey(), en.getValue(), false)) return;
+		}
+	}
+
+	private boolean sendFullSyncOrChecksum(RemoteConnection connection, int siteID, ProjectRelativePath relativePath, Path filePath, boolean checksum) {
+		if (!Files.isRegularFile(filePath)) return false;
+
+		try {
+			byte[] bytes = Files.readAllBytes(filePath);
+
+			if(!checksum) {
+				connection.send(new FullSyncMessage(siteID, relativePath.toString(), bytes));
+			}else {
+				connection.send(new ChecksumMessage(siteID, relativePath.toString(), ChecksumUtil.generateSHA256(bytes)));
+			}
+		} catch (IOException | ConnectionException e) {
+			e.printStackTrace();
+			MessageDialog.openError(null, "Share Client", "Failed to send file contents: " + e.toString());
+			return false;
+		}
+
+		return true;
 	}
 
 	private Map<ProjectRelativePath, Path> getProjectFiles(IProject project) {
@@ -253,6 +309,22 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener {
 			MessageDialog.openError(null, "Share Client", "Failed to collect project files: " + e.toString());
 			return null;
 		}
+	}
+
+	public ShareClientPartListener getPartListener() {
+		return partListener;
+	}
+
+	@Override
+	public void earlyStartup() {
+		PlatformUI.getWorkbench().addWindowListener(ShareClientWindowListener.INSTANCE);
+		Arrays.stream(PlatformUI.getWorkbench().getWorkbenchWindows()).forEach(w -> {
+			w.addPageListener(ShareClientPageListener.INSTANCE);
+			Arrays.stream(w.getPages()).forEach(p -> {
+				p.addPartListener(partListener);
+				Arrays.stream(p.getEditorReferences()).forEach(e -> partListener.addDocumentListener(e));
+			});
+		});
 	}
 
 }
