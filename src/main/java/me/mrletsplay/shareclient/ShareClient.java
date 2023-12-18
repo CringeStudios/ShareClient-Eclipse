@@ -30,6 +30,7 @@ import me.mrletsplay.shareclient.util.ChecksumUtil;
 import me.mrletsplay.shareclient.util.Peer;
 import me.mrletsplay.shareclient.util.ProjectRelativePath;
 import me.mrletsplay.shareclient.util.ShareSession;
+import me.mrletsplay.shareclient.util.listeners.ShareClientDocumentListener;
 import me.mrletsplay.shareclient.util.listeners.ShareClientPageListener;
 import me.mrletsplay.shareclient.util.listeners.ShareClientPartListener;
 import me.mrletsplay.shareclient.util.listeners.ShareClientWindowListener;
@@ -60,25 +61,33 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener, IS
 	// The shared instance
 	private static ShareClient plugin;
 
-	private ShareClientPartListener partListener = new ShareClientPartListener();
+	private ShareClientPartListener partListener;
 
 	private ShareView view;
 	private ShareSession activeSession;
 
-	private Map<ProjectRelativePath, SharedDocument> sharedDocuments;
-
 	public ShareClient() {
-		this.sharedDocuments = new HashMap<>();
+
 	}
 
 	@Override
 	public void start(BundleContext context) throws Exception {
 		super.start(context);
 		plugin = this;
+		partListener = new ShareClientPartListener();
 
 		getPreferenceStore().setDefault(ShareClientPreferences.SERVER_URI, "ws://localhost:5473");
 		getPreferenceStore().setDefault(ShareClientPreferences.SHOW_CURSORS, true);
 //		new ShareWSClient(URI.create("ws://localhost:5473")).connect();
+
+		PlatformUI.getWorkbench().addWindowListener(ShareClientWindowListener.INSTANCE);
+		Arrays.stream(PlatformUI.getWorkbench().getWorkbenchWindows()).forEach(w -> {
+			w.addPageListener(ShareClientPageListener.INSTANCE);
+			Arrays.stream(w.getPages()).forEach(p -> {
+				p.addPartListener(partListener);
+				Arrays.stream(p.getEditorReferences()).forEach(e -> partListener.addDocumentListener(e));
+			});
+		});
 	}
 
 	@Override
@@ -158,113 +167,133 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener, IS
 
 	@Override
 	public void onMessage(Message message) {
-		System.out.println("Got: " + message);
-		if (message instanceof PeerJoinMessage join) {
-			activeSession.getPeers().add(new Peer(join.peerName(), join.peerSiteID()));
-			updateView();
-		}
-
-		if(message instanceof PeerLeaveMessage leave) {
-			activeSession.getPeers().removeIf(p -> p.siteID() == leave.peerSiteID());
-			updateView();
-		}
-
-		if (message instanceof FullSyncMessage sync) {
-			// TODO: handle FULL_SYNC
-			ProjectRelativePath path;
-			try {
-				path = ProjectRelativePath.of(sync.documentPath());
-			} catch (IllegalArgumentException e) {
-				e.printStackTrace();
-				return;
+		Display.getDefault().asyncExec(() -> {
+			System.out.println("Got: " + message);
+			if (message instanceof PeerJoinMessage join) {
+				activeSession.getPeers().add(new Peer(join.peerName(), join.peerSiteID()));
+				updateView();
 			}
 
-			IWorkspace workspace = ResourcesPlugin.getWorkspace();
-			IWorkspaceRoot workspaceRoot = workspace.getRoot();
-			IProject project = workspaceRoot.getProject(path.projectName());
-			if(project == null) return;
-			// TODO: make sure to not overwrite existing non-shared projects
-			if (!project.exists()) {
-				IProjectDescription description = workspace.newProjectDescription(path.projectName());
-				try {
-					project.create(description, null);
-					project.open(null);
-				} catch (CoreException e) {
-					e.printStackTrace();
-					MessageDialog.openError(null, "Share Client", "Failed to create project: " + e.toString());
-					return;
-				}
-				System.out.println("Created project " + project);
+			if(message instanceof PeerLeaveMessage leave) {
+				activeSession.getPeers().removeIf(p -> p.siteID() == leave.peerSiteID());
+				updateView();
 			}
 
-			Path filePath = project.getLocation().toPath().resolve(path.relativePath());
-			try {
-				if (!Files.exists(filePath)) {
-					Files.createDirectories(filePath.getParent());
-					Files.createFile(filePath);
-				}
-
-				// TODO: update sharedDocuments
-
-				Files.write(filePath, sync.content());
-				project.refreshLocal(IResource.DEPTH_INFINITE, null);
-			} catch (IOException | CoreException e) {
-				e.printStackTrace();
-				MessageDialog.openError(null, "Share Client", "Failed to update file: " + e.toString());
-				return;
-			}
-		}
-
-		if (message instanceof RequestFullSyncMessage req) {
-			Map<ProjectRelativePath, Path> paths = new HashMap<>();
-			if (req.documentPath() == null) {
-				// Sync entire (shared) workspace
-				for (IProject project : activeSession.getSharedProjects()) {
-					var files = getProjectFiles(project);
-					if (files == null) return;
-					paths.putAll(files);
-				}
-			} else {
+			if (message instanceof FullSyncMessage sync) {
+				// TODO: handle FULL_SYNC
 				ProjectRelativePath path;
 				try {
-					path = ProjectRelativePath.of(req.documentPath());
+					path = ProjectRelativePath.of(sync.documentPath());
 				} catch (IllegalArgumentException e) {
+					e.printStackTrace();
 					return;
 				}
 
-				IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(path.projectName());
-				if (project == null || !project.exists()) return;
-				if (!activeSession.getSharedProjects().contains(project)) return;
+				ShareClientDocumentListener listener = partListener.getListeners().get(path);
 
-				if (!path.relativePath().isEmpty()) {
-					Path projectLocation = project.getLocation().toPath();
-					Path filePath = projectLocation.resolve(path.relativePath()).normalize();
-					if (!filePath.startsWith(projectLocation)) return;
-					paths.put(new ProjectRelativePath(project.getName(), path.relativePath()), filePath);
-				} else {
-					// Sync entire project
-					var files = getProjectFiles(project);
-					if (files == null) return;
-					paths.putAll(files);
+				IWorkspace workspace = ResourcesPlugin.getWorkspace();
+				IWorkspaceRoot workspaceRoot = workspace.getRoot();
+				IProject project = workspaceRoot.getProject(path.projectName());
+				if(project == null) return;
+				// TODO: make sure to not overwrite existing non-shared projects
+				if (!project.exists()) {
+					IProjectDescription description = workspace.newProjectDescription(path.projectName());
+					try {
+						project.create(description, null);
+						project.open(null);
+					} catch (CoreException e) {
+						e.printStackTrace();
+						MessageDialog.openError(null, "Share Client", "Failed to create project: " + e.toString());
+						return;
+					}
+					System.out.println("Created project " + project);
+				}
+
+				Path filePath = project.getLocation().toPath().resolve(path.relativePath());
+				try {
+					if (!Files.exists(filePath)) {
+						Files.createDirectories(filePath.getParent());
+						Files.createFile(filePath);
+					}
+
+					// TODO: update sharedDocuments
+
+					listener.setIgnoreChanges(true);
+					Files.write(filePath, sync.content());
+					project.refreshLocal(IResource.DEPTH_INFINITE, null);
+					listener.setIgnoreChanges(false);
+				} catch (IOException | CoreException e) {
+					e.printStackTrace();
+					MessageDialog.openError(null, "Share Client", "Failed to update file: " + e.toString());
+					return;
 				}
 			}
 
-			RemoteConnection connection = activeSession.getConnection();
-			for (var en : paths.entrySet()) {
-				if(!sendFullSyncOrChecksum(connection, req.siteID(), en.getKey(), en.getValue(), false)) return;
-			}
-		}
+			if (message instanceof RequestFullSyncMessage req) {
+				Map<ProjectRelativePath, Path> paths = new HashMap<>();
+				if (req.documentPath() == null) {
+					// Sync entire (shared) workspace
+					for (IProject project : activeSession.getSharedProjects()) {
+						var files = getProjectFiles(project);
+						System.out.println(files);
+						if (files == null) return;
+						paths.putAll(files);
+					}
+				} else {
+					ProjectRelativePath path;
+					try {
+						path = ProjectRelativePath.of(req.documentPath());
+					} catch (IllegalArgumentException e) {
+						return;
+					}
 
-		if(message instanceof ChangeMessage change) {
-			Change c = change.change();
-			try {
-				ProjectRelativePath path = ProjectRelativePath.of(c.documentPath());
-			}catch(IllegalArgumentException e) {
-				return;
+					IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(path.projectName());
+					if (project == null || !project.exists()) return;
+					if (!activeSession.getSharedProjects().contains(project)) return;
+
+					if (!path.relativePath().isEmpty()) {
+						Path projectLocation = project.getLocation().toPath();
+						Path filePath = projectLocation.resolve(path.relativePath()).normalize();
+						if (!filePath.startsWith(projectLocation)) return;
+						paths.put(new ProjectRelativePath(project.getName(), path.relativePath()), filePath);
+					} else {
+						// Sync entire project
+						var files = getProjectFiles(project);
+						if (files == null) return;
+						paths.putAll(files);
+					}
+				}
+
+				RemoteConnection connection = activeSession.getConnection();
+				for (var en : paths.entrySet()) {
+					if(!sendFullSyncOrChecksum(connection, req.siteID(), en.getKey(), en.getValue(), false)) return;
+				}
 			}
 
-			// TODO: insert change into document in sharedDocuments
-		}
+			if(message instanceof ChangeMessage change) {
+				Change c = change.change();
+				ProjectRelativePath path;
+				try {
+					path = ProjectRelativePath.of(c.documentPath());
+				}catch(IllegalArgumentException e) {
+					return;
+				}
+
+				if(activeSession.getSharedDocument(path) != null) return;
+
+				// FIXME: doesn't work
+				SharedDocument doc = activeSession.getOrCreateSharedDocument(path, () -> {
+					try {
+						return Files.readString(resolvePath(path));
+					}catch(IOException e) {
+						MessageDialog.openError(null, "Share Client", "Failed to read file: " + e.toString());
+						throw new RuntimeException(e);
+					}
+				});
+
+				doc.onMessage(message);
+			}
+		});
 	}
 
 	public void addSharedProject(IProject project) {
@@ -278,7 +307,7 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener, IS
 	}
 
 	private boolean sendFullSyncOrChecksum(RemoteConnection connection, int siteID, ProjectRelativePath relativePath, Path filePath, boolean checksum) {
-		if (!Files.isRegularFile(filePath)) return false;
+		if (!Files.isRegularFile(filePath)) return true;
 
 		try {
 			byte[] bytes = Files.readAllBytes(filePath);
@@ -295,6 +324,16 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener, IS
 		}
 
 		return true;
+	}
+
+	private Path resolvePath(ProjectRelativePath path) {
+		IProject project = ResourcesPlugin.getWorkspace().getRoot().getProject(path.projectName());
+		if (project == null || !project.exists()) return null;
+		if (!activeSession.getSharedProjects().contains(project)) return null;
+		Path projectLocation = project.getLocation().toPath();
+		Path filePath = projectLocation.resolve(path.relativePath()).normalize();
+		if (!filePath.startsWith(projectLocation)) return null;
+		return filePath;
 	}
 
 	private Map<ProjectRelativePath, Path> getProjectFiles(IProject project) {
@@ -317,14 +356,6 @@ public class ShareClient extends AbstractUIPlugin implements MessageListener, IS
 
 	@Override
 	public void earlyStartup() {
-		PlatformUI.getWorkbench().addWindowListener(ShareClientWindowListener.INSTANCE);
-		Arrays.stream(PlatformUI.getWorkbench().getWorkbenchWindows()).forEach(w -> {
-			w.addPageListener(ShareClientPageListener.INSTANCE);
-			Arrays.stream(w.getPages()).forEach(p -> {
-				p.addPartListener(partListener);
-				Arrays.stream(p.getEditorReferences()).forEach(e -> partListener.addDocumentListener(e));
-			});
-		});
 	}
 
 }

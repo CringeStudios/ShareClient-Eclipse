@@ -6,9 +6,7 @@ import java.util.Map;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.jface.text.DocumentEvent;
 import org.eclipse.jface.text.IDocument;
-import org.eclipse.jface.text.IDocumentListener;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IPartListener2;
@@ -21,25 +19,11 @@ import me.mrletsplay.shareclient.util.ProjectRelativePath;
 
 public class ShareClientPartListener implements IPartListener2 {
 
-	private Map<ProjectRelativePath, IDocumentListener> listeners = new HashMap<>();
+	private Map<ProjectRelativePath, ShareClientDocumentListener> listeners = new HashMap<>();
 
-	private IDocumentListener createListener(ProjectRelativePath path) {
+	private ShareClientDocumentListener createListener(ProjectRelativePath path, IDocument document) {
 		if(listeners.containsKey(path)) return listeners.get(path);
-
-		IDocumentListener listener = new IDocumentListener() {
-
-			private boolean ignoreChanges = false;
-
-			@Override
-			public void documentChanged(DocumentEvent event) {
-				System.out.println("Change in document at " + path);
-			}
-
-			@Override
-			public void documentAboutToBeChanged(DocumentEvent event) {
-
-			}
-		};
+		ShareClientDocumentListener listener = new ShareClientDocumentListener(path, document);
 		listeners.put(path, listener);
 		return listener;
 	}
@@ -60,8 +44,8 @@ public class ShareClientPartListener implements IPartListener2 {
 
 		Path filePath = project.getLocation().toPath().relativize(file.getLocation().toPath());
 		ProjectRelativePath relPath = new ProjectRelativePath(project.getName(), filePath.toString());
-		System.out.println(relPath);
-		document.addDocumentListener(createListener(relPath));
+		System.out.println("Opened editor: " + relPath);
+		document.addDocumentListener(createListener(relPath, document));
 	}
 
 	@Override
@@ -72,6 +56,10 @@ public class ShareClientPartListener implements IPartListener2 {
 	@Override
 	public void partInputChanged(IWorkbenchPartReference partRef) {
 		addDocumentListener(partRef);
+	}
+
+	public Map<ProjectRelativePath, ShareClientDocumentListener> getListeners() {
+		return listeners;
 	}
 
 }

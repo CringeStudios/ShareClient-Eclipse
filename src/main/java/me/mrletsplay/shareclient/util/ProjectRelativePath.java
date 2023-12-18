@@ -1,6 +1,13 @@
 package me.mrletsplay.shareclient.util;
 
+import java.util.Objects;
+
 public record ProjectRelativePath(String projectName, String relativePath) {
+
+	public ProjectRelativePath {
+		Objects.requireNonNull(projectName, "projectName must not be null");
+		Objects.requireNonNull(relativePath, "relativePath must not be null");
+	}
 
 	@Override
 	public String toString() {
